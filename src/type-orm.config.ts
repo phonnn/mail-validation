@@ -2,7 +2,7 @@ import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { config } from 'dotenv';
 
-import { EmailValidationEntity } from './modules/email-validation/entities/email-validation.entity';
+// import * as exampleEntities from './modules/example/entities';
 import * as migrations from './migrations';
 
 config();
@@ -18,10 +18,7 @@ export default new DataSource({
   database: configService.get('DATABASE_NAME'),
   logging: true,
   entities: [
-    // ...Object.values(userEntities),
-    // ...Object.values(storyEntities),
-    // ...Object.values(chapterEntities),
-    EmailValidationEntity,
+    // ...Object.values(exampleEntities),
   ],
   migrations: [...Object.values(migrations)],
   ssl:
