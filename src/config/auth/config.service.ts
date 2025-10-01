@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CONFIGURATION } from '@thu-gioi/config/config.constants';
+import { CONFIGURATION } from '@mail-validation/config/config.constants';
 import { AuthConfigurationInterface } from './configuration';
 
 /**

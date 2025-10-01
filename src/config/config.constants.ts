@@ -1,5 +1,5 @@
 export const CONFIGURATION = {
-  DEFAULT_APP: 'thu-gioi',
+  DEFAULT_APP: 'mail-validation',
   DEFAULT_URL: 'http://localhost:3000/',
   DEFAULT_PORT: '3000',
 

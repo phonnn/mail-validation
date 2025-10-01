@@ -1,6 +1,6 @@
 import { registerAs } from '@nestjs/config';
-import { CONFIGURATION } from '@thu-gioi/config/config.constants';
-import { DatabaseConfigurationInterface } from '@thu-gioi/config';
+import { CONFIGURATION } from '@mail-validation/config/config.constants';
+import { DatabaseConfigurationInterface } from '@mail-validation/config';
 
 /**
  * Database configuration

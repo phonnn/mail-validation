@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CONFIGURATION } from '@thu-gioi/config/config.constants';
-import { DatabaseConfigurationInterface } from '@thu-gioi/config';
+import { CONFIGURATION } from '@mail-validation/config/config.constants';
+import { DatabaseConfigurationInterface } from '@mail-validation/config';
 
 /**
  * Service dealing with postgres database config based operations.

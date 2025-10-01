@@ -1,7 +1,7 @@
 import { TypeOrmModule, TypeOrmModuleAsyncOptions } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm/dist/interfaces/typeorm-options.interface';
-import { PostgresConfigModule, PostgresConfigService } from '@thu-gioi/config';
+import { PostgresConfigModule, PostgresConfigService } from '@mail-validation/config';
 
 @Module({
   imports: [

@@ -1,6 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
-import { ErrorCodeEnum } from '@thu-gioi/common/errors/error-code.enum';
-import { AppException } from '@thu-gioi/common/errors/exceptions/app.exception';
+import { AppException } from '@mail-validation/common/errors/exceptions/app.exception';
+import { ErrorCodeEnum } from '@mail-validation/common/errors/error-code.enum';
+
 
 export class AccessDeniedException extends AppException {
   constructor(message = 'Access denied') {

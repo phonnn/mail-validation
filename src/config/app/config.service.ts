@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CONFIGURATION } from '@thu-gioi/config/config.constants';
 import { AppConfigurationInterface } from './configuration';
+import { CONFIGURATION } from '@mail-validation/config/config.constants';
 
 /**
  * Service dealing with app config based operations.

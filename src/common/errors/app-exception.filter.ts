@@ -1,6 +1,6 @@
 import { ExceptionFilter, Catch, ArgumentsHost } from '@nestjs/common';
 import { Response } from 'express';
-import { AppException } from '@thu-gioi/common/errors/exceptions/app.exception';
+import { AppException } from '@mail-validation/common/errors/exceptions';
 
 @Catch(AppException)
 export class AppExceptionFilter implements ExceptionFilter {

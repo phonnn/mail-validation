@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
-import { CONFIGURATION } from '@thu-gioi/config/config.constants';
 import configuration from './configuration';
 import { AppConfigService } from './config.service';
+import { CONFIGURATION } from '@mail-validation/config/config.constants';
 
 /**
  * Import and provide app configuration related classes.
