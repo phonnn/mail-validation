@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { config } from 'dotenv';
 
 // import * as exampleEntities from './modules/example/entities';
-import * as migrations from './migrations';
+// import * as migrations from './migrations';
 
 config();
 
@@ -20,7 +20,7 @@ export default new DataSource({
   entities: [
     // ...Object.values(exampleEntities),
   ],
-  migrations: [...Object.values(migrations)],
+  // migrations: [...Object.values(migrations)],
   ssl:
     `${process.env.DATABASE_SSL}` === 'true'
       ? {
