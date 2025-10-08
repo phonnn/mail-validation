@@ -4,5 +4,4 @@ export enum ErrorCodeEnum {
 
   // Forbidden
   AccessDenied = 'ACCESS_DENIED',
-  NotAuthor = 'NOT_AUTHOR',
 }
