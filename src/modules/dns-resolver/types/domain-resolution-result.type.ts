@@ -1,4 +1,5 @@
 import { MxRecord } from 'dns';
+import { ResolutionSource } from '../enums/resolution-source.enum';
 
 export interface DomainResolutionResult {
   domain: string;
@@ -9,6 +10,6 @@ export interface DomainResolutionResult {
   hasValidA: boolean;
   hasValidAaaa: boolean;
   resolutionTime: number;
-  cached: boolean;
+  source: ResolutionSource;
   error?: string;
 }

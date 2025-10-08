@@ -1,51 +1,94 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as dns from 'dns';
-import { MxRecord } from 'dns';
-import { promisify } from 'util';
 import { AbstractCacheProvider } from '@mail-validation/common/cache/providers/abstract-cache.provider';
-import { DNS_CONSTANTS } from '@mail-validation/modules/dns-resolver/constants';
-import { DomainResolutionResult } from '@mail-validation/modules/dns-resolver/interfaces';
+import {
+  DomainResolutionResult, 
+  ResolutionSource, 
+  DnsRecordType
+} from '@mail-validation/modules/dns-resolver/types';
 import { CacheStatsDto } from '@mail-validation/modules/dns-resolver/dtos';
+import { MxResolverService } from '@mail-validation/modules/dns-resolver/services/mx-resolver.service';
+import { AResolverService } from '@mail-validation/modules/dns-resolver/services/a-resolver.service';
+import { TxtResolverService } from '@mail-validation/modules/dns-resolver/services/txt-resolver.service';
+import { AAAAResolverService } from '@mail-validation/modules/dns-resolver/services/aaaa-resolver.service';
 
-
-
-const dnsResolveMx = promisify(dns.resolveMx);
-const dnsResolveA = promisify(dns.resolve4);
-const dnsResolveAaaa = promisify(dns.resolve6);
-const dnsResolveTxt = promisify(dns.resolveTxt);
 
 @Injectable()
 export class DomainResolverService {
   private readonly logger = new Logger(DomainResolverService.name);
-  private readonly defaultTtl = DNS_CONSTANTS.DEFAULT_TTL;
 
   constructor(
     private readonly cacheProvider: AbstractCacheProvider,
+    private readonly mxResolver: MxResolverService,
+    private readonly aResolver: AResolverService,
+    private readonly aaaaResolver: AAAAResolverService,
+    private readonly txtResolver: TxtResolverService,
   ) {}
 
-  async resolveDomain(domain: string, useCache: boolean = true): Promise<DomainResolutionResult> {
+  /**
+   * Normalizes a domain name by converting to lowercase and trimming whitespace
+   * @param domain The domain to normalize
+   * @returns The normalized domain
+   */
+  private normalizeDomain(domain: string): string {
+    try {
+      // Convert to punycode for international domains and normalize
+      return domain.toLowerCase().trim();
+    } catch (error) {
+      this.logger.warn(`Failed to normalize domain ${domain}:`, error);
+      return domain.toLowerCase().trim();
+    }
+  }
+
+  /**
+   * Extracts records from a Promise.allSettled result
+   * @param result The Promise.allSettled result
+   * @param defaultValue Default value if the promise was rejected
+   * @returns The records array or default value
+   */
+  private extractRecords<T>(result: PromiseSettledResult<any>, defaultValue: T[]): T[] {
+    return result.status === 'fulfilled' ? result.value.records : defaultValue;
+  }
+
+  /**
+   * Determines the overall resolution source based on individual resolver results
+   * @param results Array of Promise.allSettled results
+   * @returns The overall resolution source
+   */
+  private determineOverallSource(results: PromiseSettledResult<any>[]): ResolutionSource {
+    // Check if any resolver had an error
+    const hasError = results.some(result => 
+      result.status === 'rejected' || 
+      (result.status === 'fulfilled' && result.value.source === ResolutionSource.ERROR)
+    );
+    
+    if (hasError) {
+      return ResolutionSource.ERROR;
+    }
+
+    // Check if any resolver used cache
+    const hasCache = results.some(result => 
+      result.status === 'fulfilled' && result.value.source === ResolutionSource.CACHE
+    );
+    
+    if (hasCache) {
+      return ResolutionSource.CACHE;
+    }
+
+    // All resolvers used DNS
+    return ResolutionSource.DNS;
+  }
+
+  async resolveDomain(domain: string): Promise<DomainResolutionResult> {
     const startTime = Date.now();
     const normalizedDomain = this.normalizeDomain(domain);
 
     this.logger.debug(`Resolving domain: ${normalizedDomain}`);
 
-    // Check cache first
-    if (useCache) {
-      const cached = await this.getFromCache(normalizedDomain);
-      if (cached) {
-        this.logger.debug(`Cache hit for domain: ${normalizedDomain}`);
-        return { ...cached, cached: true };
-      }
-    }
-
     try {
-      const result = await this.performResolution(normalizedDomain, startTime);
-      
-      // Cache the result
-      await this.setCache(normalizedDomain, result);
+      const result = await this.resolveAllRecords(normalizedDomain, startTime);
       
       this.logger.debug(`DNS resolution completed for ${normalizedDomain} in ${result.resolutionTime}ms`);
-      return { ...result, cached: false };
+      return result;
     } catch (error) {
       this.logger.error(`DNS resolution failed for ${normalizedDomain}:`, error);
       return {
@@ -57,138 +100,104 @@ export class DomainResolverService {
         hasValidA: false,
         hasValidAaaa: false,
         resolutionTime: Date.now() - startTime,
-        cached: false,
+        source: ResolutionSource.ERROR,
         error: error.message,
       };
     }
   }
 
-  private async performResolution(domain: string, startTime: number): Promise<DomainResolutionResult> {
-    this.logger.debug(`Performing DNS resolution for ${domain}`);
+  private async resolveAllRecords(domain: string, startTime: number): Promise<DomainResolutionResult> {
+    this.logger.debug(`Performing DNS resolution with modular resolvers for ${domain}`);
     
-    const [mxRecords, aRecords, aaaaRecords] = await Promise.allSettled([
-      this.resolveMx(domain),
-      this.resolveA(domain),
-      this.resolveAaaa(domain),
+    // Resolve all record types in parallel
+    const [mxResult, aResult, aaaaResult, txtResult] = await Promise.allSettled([
+      this.mxResolver.resolve(domain),
+      this.aResolver.resolve(domain),
+      this.aaaaResolver.resolve(domain),
+      this.txtResolver.resolve(domain),
     ]);
 
-    const mxResult = mxRecords.status === 'fulfilled' ? mxRecords.value : [];
-    const aResult = aRecords.status === 'fulfilled' ? aRecords.value : [];
-    const aaaaResult = aaaaRecords.status === 'fulfilled' ? aaaaRecords.value : [];
+    // Extract records from results (handle both success and failure cases)
+    const mxRecords = this.extractRecords(mxResult, []);
+    const aRecords = this.extractRecords(aResult, []);
+    const aaaaRecords = this.extractRecords(aaaaResult, []);
+    const txtRecords = this.extractRecords(txtResult, []);
 
-    const result = {
+    // Determine overall resolution source
+    const overallSource = this.determineOverallSource([mxResult, aResult, aaaaResult, txtResult]);
+
+    const result: DomainResolutionResult = {
       domain,
-      mxRecords: mxResult,
-      aRecords: aResult,
-      aaaaRecords: aaaaResult,
-      hasValidMx: mxResult.length > 0,
-      hasValidA: aResult.length > 0,
-      hasValidAaaa: aaaaResult.length > 0,
+      mxRecords,
+      aRecords,
+      aaaaRecords,
+      hasValidMx: mxRecords.length > 0,
+      hasValidA: aRecords.length > 0,
+      hasValidAaaa: aaaaRecords.length > 0,
       resolutionTime: Date.now() - startTime,
-      cached: false,
+      source: overallSource,
     };
 
-    this.logger.debug(`Resolution result for ${domain}:`, {
-      mxCount: mxResult.length,
-      aCount: aResult.length,
-      aaaaCount: aaaaResult.length,
+    this.logger.debug(`Resolution completed for ${domain}:`, {
+      mxCount: mxRecords.length,
+      aCount: aRecords.length,
+      aaaaCount: aaaaRecords.length,
+      txtCount: txtRecords.length,
       time: result.resolutionTime,
+      source: result.source,
     });
 
     return result;
   }
 
-  private async resolveMx(domain: string): Promise<Array<MxRecord>> {
-    try {
-      this.logger.debug(`Resolving MX records for ${domain}`);
-      const records = await dnsResolveMx(domain);
-      const sortedRecords = records.sort((a, b) => a.priority - b.priority);
-      
-      this.logger.debug(`Found ${sortedRecords.length} MX records for ${domain}`);
-      return sortedRecords;
-    } catch (error) {
-      this.logger.debug(`No MX records found for ${domain}:`, error.message);
-      return [];
-    }
+  // Utility methods for individual record type resolution
+  async resolveMxRecords(domain: string) {
+    return this.mxResolver.resolve(domain);
   }
 
-  private async resolveA(domain: string): Promise<string[]> {
-    try {
-      this.logger.debug(`Resolving A records for ${domain}`);
-      const records = await dnsResolveA(domain);
-      this.logger.debug(`Found ${records.length} A records for ${domain}`);
-      return records;
-    } catch (error) {
-      this.logger.debug(`No A records found for ${domain}:`, error.message);
-      return [];
-    }
+  async resolveARecords(domain: string) {
+    return this.aResolver.resolve(domain);
   }
 
-  private async resolveAaaa(domain: string): Promise<string[]> {
-    try {
-      this.logger.debug(`Resolving AAAA records for ${domain}`);
-      const records = await dnsResolveAaaa(domain);
-      this.logger.debug(`Found ${records.length} AAAA records for ${domain}`);
-      return records;
-    } catch (error) {
-      this.logger.debug(`No AAAA records found for ${domain}:`, error.message);
-      return [];
-    }
+  async resolveAaaaRecords(domain: string) {
+    return this.aaaaResolver.resolve(domain);
   }
 
-  private normalizeDomain(domain: string): string {
-    try {
-      // Convert to punycode for international domains and normalize
-      return domain.toLowerCase().trim();
-    } catch (error) {
-      this.logger.warn(`Failed to normalize domain ${domain}:`, error);
-      return domain.toLowerCase().trim();
-    }
-  }
-
-  private async getFromCache(domain: string): Promise<DomainResolutionResult> {
-    try {
-      const cacheKey = `${DNS_CONSTANTS.CACHE_KEY_PREFIX}${domain}`;
-      const cached = await this.cacheProvider.get<string>(cacheKey);
-      
-      if (cached) {
-        this.logger.debug(`Cache hit for domain: ${domain}`);
-        return JSON.parse(cached);
-      }
-      
-      return null;
-    } catch (error) {
-      this.logger.warn(`Failed to get DNS result from cache for ${domain}:`, error);
-      return null;
-    }
-  }
-
-  private async setCache(domain: string, result: DomainResolutionResult): Promise<void> {
-    try {
-      const cacheKey = `${DNS_CONSTANTS.CACHE_KEY_PREFIX}${domain}`;
-      await this.cacheProvider.set(cacheKey, JSON.stringify(result), this.defaultTtl);
-      this.logger.debug(`Cached DNS result for domain: ${domain}`);
-    } catch (error) {
-      this.logger.warn(`Failed to cache DNS result for ${domain}:`, error);
-    }
+  async resolveTxtRecords(domain: string) {
+    return this.txtResolver.resolve(domain);
   }
 
   async getCacheStats(): Promise<CacheStatsDto> {
     try {
-      const dnsCacheEntries: Array<{ key: string; value: any }> = [];
-      
-      if (this.cacheProvider.iterator) {
-        for await (const [key, value] of this.cacheProvider.iterator()) {
-          if (key.startsWith(DNS_CONSTANTS.CACHE_KEY_PREFIX)) {
-            dnsCacheEntries.push({ key, value });
-          }
-        }
-      }
-      
+      // Get stats from each resolver
+      const [mxStats, aStats, aaaaStats, txtStats] = await Promise.all([
+        this.mxResolver.getCacheStats(),
+        this.aResolver.getCacheStats(),
+        this.aaaaResolver.getCacheStats(),
+        this.txtResolver.getCacheStats(),
+      ]);
+
+      // Combine all domains
+      const allDomains = new Set([
+        ...mxStats.domains,
+        ...aStats.domains,
+        ...aaaaStats.domains,
+        ...txtStats.domains,
+      ]);
+
+      const totalSize = mxStats.size + aStats.size + aaaaStats.size + txtStats.size;
+
       return new CacheStatsDto({
-        size: dnsCacheEntries.length,
-        domains: dnsCacheEntries.map(({ key }) => key.replace(DNS_CONSTANTS.CACHE_KEY_PREFIX, '')),
+        size: totalSize,
+        domains: Array.from(allDomains),
         memoryUsage: 'N/A', // Cache provider handles memory management
+        typeStats: {
+          [DnsRecordType.MX]: mxStats.size,
+          [DnsRecordType.A]: aStats.size,
+          [DnsRecordType.AAAA]: aaaaStats.size,
+          [DnsRecordType.TXT]: txtStats.size,
+          [DnsRecordType.ALL]: 0, // Not applicable for individual stats
+        },
       });
     } catch (error) {
       this.logger.warn('Failed to get cache stats:', error);
@@ -196,30 +205,75 @@ export class DomainResolverService {
         size: 0,
         domains: [],
         memoryUsage: 'N/A',
+        typeStats: {
+          [DnsRecordType.MX]: 0,
+          [DnsRecordType.A]: 0,
+          [DnsRecordType.AAAA]: 0,
+          [DnsRecordType.TXT]: 0,
+          [DnsRecordType.ALL]: 0,
+        },
       });
     }
   }
 
   async clearCache(): Promise<void> {
     try {
-      const dnsCacheKeys: string[] = [];
+      // Clear cache from all resolvers
+      await Promise.all([
+        this.mxResolver.clearCache(),
+        this.aResolver.clearCache(),
+        this.aaaaResolver.clearCache(),
+        this.txtResolver.clearCache(),
+      ]);
       
-      if (this.cacheProvider.iterator) {
-        for await (const [key] of this.cacheProvider.iterator()) {
-          if (key.startsWith(DNS_CONSTANTS.CACHE_KEY_PREFIX)) {
-            dnsCacheKeys.push(key);
-          }
-        }
-      }
-      
-      if (dnsCacheKeys.length > 0) {
-        await this.cacheProvider.delete(dnsCacheKeys);
-        this.logger.log(`DNS cache cleared (${dnsCacheKeys.length} entries removed)`);
-      } else {
-        this.logger.log('DNS cache was already empty');
-      }
+      this.logger.log('All DNS cache cleared');
     } catch (error) {
       this.logger.error('Failed to clear DNS cache:', error);
+    }
+  }
+
+  // New methods for per-type cache management
+  async clearCacheByType(recordType: DnsRecordType): Promise<void> {
+    try {
+      switch (recordType) {
+        case DnsRecordType.MX:
+          await this.mxResolver.clearCache();
+          break;
+        case DnsRecordType.A:
+          await this.aResolver.clearCache();
+          break;
+        case DnsRecordType.AAAA:
+          await this.aaaaResolver.clearCache();
+          break;
+        case DnsRecordType.TXT:
+          await this.txtResolver.clearCache();
+          break;
+        case DnsRecordType.ALL:
+          await this.clearCache();
+          break;
+      }
+      
+      this.logger.log(`DNS ${recordType} cache cleared`);
+    } catch (error) {
+      this.logger.error(`Failed to clear DNS ${recordType} cache:`, error);
+    }
+  }
+
+  async clearCacheByDomain(domain: string): Promise<void> {
+    try {
+      const normalizedDomain = this.normalizeDomain(domain);
+      
+      // Clear cache for specific domain from all resolvers
+      await Promise.all([
+        this.mxResolver.clearCache(normalizedDomain),
+        this.aResolver.clearCache(normalizedDomain),
+        this.aaaaResolver.clearCache(normalizedDomain),
+        this.txtResolver.clearCache(normalizedDomain),
+      ]);
+      
+      this.logger.log(`DNS cache cleared for domain ${normalizedDomain}`);
+    } catch (error) {
+      this.logger.error(`Failed to clear DNS cache for domain ${domain}:`, error);
     }
   }
 
@@ -240,3 +294,4 @@ export class DomainResolverService {
     });
   }
 }
+
