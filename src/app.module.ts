@@ -4,6 +4,7 @@ import { PostgresDatabaseProviderModule } from '@mail-validation/providers/datab
 import { CacheProviderModule } from '@mail-validation/common/cache/cache-provider.module';
 import { CacheProviderEnum } from '@mail-validation/common/cache/enums/cache-provider.enum';
 import { DnsResolverModule } from '@mail-validation/modules/dns-resolver/dns-resolver.module';
+import { SmtpProbeModule } from '@mail-validation/modules/smtp-probe/smtp-probe.module';
 
 @Module({
   imports: [
@@ -16,8 +17,9 @@ import { DnsResolverModule } from '@mail-validation/modules/dns-resolver/dns-res
       provider: CacheProviderEnum.IOREDIS,
     }),
 
-    // Business Module
+    // Business Modules
     DnsResolverModule,
+    SmtpProbeModule,
   ],
   controllers: [],
   providers: [],

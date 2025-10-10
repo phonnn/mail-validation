@@ -1,3 +1,5 @@
+import { LogLevelEnum } from '@mail-validation/common/enums';
+
 export const CONFIGURATION = {
   DEFAULT_APP: 'mail-validation',
   DEFAULT_URL: 'http://localhost:3000/',
@@ -35,6 +37,11 @@ export const CONFIGURATION = {
   DEFAULT_JWT_SECRET: 'super-secret',
   DEFAULT_JWT_EXPIRED: 3600,
   DEFAULT_SALT_SIZE: 10,
+
+  // Logging
+  KEY_LOGGING: 'logging',
+  KEY_LOG_LEVEL: 'logLevel',
+  DEFAULT_LOG_LEVEL: LogLevelEnum.INFO,
 };
 
 export const CONNECTIONS = {
