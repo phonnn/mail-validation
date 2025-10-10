@@ -1,0 +1,1 @@
+export const DNS_RESOLVER_TOKEN = 'DNS_RESOLVER_TOKEN';
