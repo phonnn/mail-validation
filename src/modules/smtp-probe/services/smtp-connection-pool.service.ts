@@ -193,7 +193,6 @@ export class SmtpConnection {
 export class SmtpConnectionPoolService {
   private readonly logger = new Logger(SmtpConnectionPoolService.name);
   private pools: Map<string, SmtpConnection[]> = new Map();
-  private readonly maxIdleTime = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private readonly responseParser: SmtpResponseParserService,

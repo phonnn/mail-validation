@@ -16,4 +16,3 @@ export * from './queue-config.type';
 export * from './email-data.type';
 export * from './job-operation-result.type';
 export * from './websocket-client.type';
-export * from '../enums';

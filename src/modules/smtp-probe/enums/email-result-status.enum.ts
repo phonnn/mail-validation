@@ -6,3 +6,4 @@ export enum EmailResultStatus {
   FAILED = 'failed',
 }
 
+
